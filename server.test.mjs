@@ -27,6 +27,11 @@ const described=await (await call('/api/tasks','GET',null,cookie)).json();assert
 assert.equal((await call('/api/tasks/'+t.id,'PATCH',{description:'آخرین توضیح',etag:described.tasks[0].etag},cookie)).status,200);
 const listed=await (await call('/api/tasks','GET',null,memberCookie)).json();assert.equal(listed.tasks[0].descriptions.length,3);assert.equal(listed.tasks[0].descriptions[0].text,'آخرین توضیح');assert.equal(listed.tasks[0].note,'انجام شد');
 assert.equal((await call('/api/tasks/'+t.id,'PATCH',{description:'   ',etag:listed.tasks[0].etag},cookie)).status,400);
+const beforeEdit=await (await call('/api/tasks','GET',null,cookie)).json();
+assert.equal((await call('/api/tasks/'+t.id,'PATCH',{title:'تسک ویرایش شده',assignee:'سارا',etag:beforeEdit.tasks[0].etag},memberCookie)).status,200);
+const edited=await (await call('/api/tasks','GET',null,cookie)).json();assert.equal(edited.tasks[0].title,'تسک ویرایش شده');assert.equal(edited.tasks[0].assignee,'سارا');assert.equal(edited.tasks[0].descriptions.length,3);assert.equal(edited.tasks[0].status,'done');assert.equal((await call('/api/tasks/'+t.id,'PATCH',{title:' ',etag:edited.tasks[0].etag},cookie)).status,400);
+const actionAt='2026-11-14T08:30:00.000Z';assert.equal((await call('/api/tasks/'+t.id,'PATCH',{status:'doing',note:'اقدام جدید',actionAt,etag:edited.tasks[0].etag},memberCookie)).status,200);
+const timed=await (await call('/api/tasks','GET',null,cookie)).json();assert.equal(timed.tasks[0].actionAt,actionAt);assert.equal(timed.tasks[0].history[0].actionAt,actionAt);assert.equal(timed.tasks[0].descriptions.length,3);assert.equal((await call('/api/tasks/'+t.id,'PATCH',{actionAt:'not-a-date',etag:timed.tasks[0].etag},cookie)).status,400);
 assert.equal((await call('/auth/password','POST',{current:'wrong',password:'new-password-123'},memberCookie)).status,403);
 assert.equal((await call('/auth/password','POST',{current:'member-password-123',password:'new-password-123'},memberCookie)).status,200);
 assert.equal((await call('/auth/logout','POST',{},cookie)).status,200);
