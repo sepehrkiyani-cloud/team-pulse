@@ -51,3 +51,10 @@ test('existing database task owners are migrated once without changing descripti
  for(const row of after){const old=before.find(t=>t.key===row.key);assert.equal(row.data.followUpOwner,'شراره رضایی');assert.equal(row.data.projectManager,'سپهر کیانی');assert.deepEqual(row.data.descriptions,old.data.descriptions);assert.equal(row.data.updatedAt,old.data.updatedAt);assert.equal(row.data.actionAt,old.data.actionAt);assert.notEqual(row.etag,old.etag)}
  assert.equal(await migrateDefaultOwners(adapter),0);
 });
+test('Excel export is authenticated and contains literal text, RTL sheets and elapsed hours',async()=>{
+ assert.equal((await call('/api/export.xlsx')).status,401);
+ const {taskWorkbook}=await import('./export.mjs');const ExcelJS=(await import('exceljs')).default;
+ const at='2026-11-14T08:00:00.000Z';const buffer=await taskWorkbook([{title:'=1+1',projectName:'پروژه تست',status:'doing',followUpOwner:'شراره رضایی',projectManager:'سپهر کیانی',updatedAt:at,descriptions:[{text:'آخرین توضیح',by:'سپهر',at}]}],Date.parse(at)+26.25*3600000);
+ const book=new ExcelJS.Workbook();await book.xlsx.load(buffer);const sheet=book.getWorksheet('آخرین وضعیت');assert.equal(sheet.views[0].rightToLeft,true);assert.equal(sheet.getCell('B2').value,'=1+1');assert.equal(sheet.getCell('F2').value,'آخرین توضیح');assert.equal(sheet.getCell('I2').value,26.25);assert.equal(book.getWorksheet('فهرست توضیحات').getCell('C2').value,'آخرین توضیح');
+ const login=await call('/auth/login','POST',{username:'member',password:'new-password-123'});const cookie=login.headers.get('set-cookie').split(';')[0];const response=await call('/api/export.xlsx?project=nonexistent','GET',null,cookie);assert.equal(response.status,200);assert.ok(response.headers.get('content-type').includes('spreadsheetml'));const filtered=new ExcelJS.Workbook();await filtered.xlsx.load(Buffer.from(await response.arrayBuffer()));assert.equal(filtered.getWorksheet('آخرین وضعیت').rowCount,1);
+});
