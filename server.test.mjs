@@ -16,12 +16,14 @@ const login=await call('/auth/login','POST',{username:'admin',password:'test-pas
 assert.equal((await call('/api/users','POST',{username:'member',name:'علی',password:'member-password-123'},cookie)).status,201);
 const memberLogin=await call('/auth/login','POST',{username:'member',password:'member-password-123'});const memberCookie=memberLogin.headers.get('set-cookie').split(';')[0];
 assert.equal((await call('/api/users','POST',{username:'other',name:'دیگر',password:'test-password-123'},memberCookie)).status,403);
-const t=await (await call('/api/tasks','POST',{title:'تسک مشترک',assignee:'علی'},cookie)).json();assert.ok(t.id);
+const t=await (await call('/api/tasks','POST',{title:'تسک مشترک',assignee:'علی',description:'شرح اولیه'},cookie)).json();assert.ok(t.id);
 const tasks=await (await call('/api/tasks','GET',null,memberCookie)).json();assert.equal(tasks.tasks.length,1);assert.equal(tasks.user.name,'علی');
 const etag=tasks.tasks[0].etag;
 assert.equal((await call('/api/tasks/'+t.id,'PATCH',{status:'done',note:'انجام شد',etag},memberCookie)).status,200);
 assert.equal((await call('/api/tasks/'+t.id,'PATCH',{status:'blocked',etag},cookie)).status,409);
-const updated=await (await call('/api/tasks','GET',null,cookie)).json();assert.equal(updated.tasks[0].status,'done');assert.equal(updated.tasks[0].history[0].by,'علی');
+const updated=await (await call('/api/tasks','GET',null,cookie)).json();assert.equal(updated.tasks[0].status,'done');assert.equal(updated.tasks[0].history[0].by,'علی');assert.equal(updated.tasks[0].description,'شرح اولیه');
+assert.equal((await call('/api/tasks/'+t.id,'PATCH',{description:'توضیحات جداگانه\nجزئیات بیشتر',etag:updated.tasks[0].etag},memberCookie)).status,200);
+const described=await (await call('/api/tasks','GET',null,cookie)).json();assert.equal(described.tasks[0].description,'توضیحات جداگانه\nجزئیات بیشتر');assert.equal(described.tasks[0].note,'انجام شد');assert.equal(described.tasks[0].status,'done');assert.equal(described.tasks[0].history.length,1);
 assert.equal((await call('/auth/password','POST',{current:'wrong',password:'new-password-123'},memberCookie)).status,403);
 assert.equal((await call('/auth/password','POST',{current:'member-password-123',password:'new-password-123'},memberCookie)).status,200);
 assert.equal((await call('/auth/logout','POST',{},cookie)).status,200);
