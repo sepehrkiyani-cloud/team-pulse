@@ -2,8 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import {newDb} from 'pg-mem';
-const db=newDb();pg.Pool=db.adapters.createPg().Pool;process.env.NODE_ENV='test';
-const {handle,init,passwordHash,passwordValid}=await import('./server.mjs');
+const db=newDb({noAstCoverageCheck:true});pg.Pool=db.adapters.createPg().Pool;process.env.NODE_ENV='test';
+const {handle,init,passwordHash,passwordValid,migrateDefaultOwners}=await import('./server.mjs');
 const pool=new pg.Pool();await init();
 await pool.query('INSERT INTO users(id,username,name,password_hash,role) VALUES($1,$2,$3,$4,$5)',['11111111-1111-4111-8111-111111111111','admin','مدیر',passwordHash('test-password-123'),'admin']);
 async function call(path,method='GET',body,cookie='',origin='https://team.test'){return handle(new Request('https://team.test'+path,{method,headers:{origin,cookie},...(body?{body:JSON.stringify(body)}:{})}),'local')}
@@ -40,4 +40,14 @@ assert.equal((await call('/api/tasks','GET',null,cookie)).status,401);
 test('PWA manifest, icons and service worker are accessible before sign-in',async()=>{
  const r=await call('/manifest.webmanifest');assert.equal(r.status,200);const manifest=await r.json();assert.equal(manifest.display,'standalone');assert.equal(manifest.start_url,'/');for(const icon of manifest.icons){const image=await call(icon.src);assert.equal(image.status,200);assert.equal(image.headers.get('content-type'),icon.type);assert.ok((await image.arrayBuffer()).byteLength>100)}
  const sw=await call('/sw.js');assert.equal(sw.headers.get('cache-control'),'no-cache');const text=await sw.text();new Function(text);assert.ok(!text.includes('cache.put'));assert.equal((await call('/api/tasks')).status,401);
+});
+
+test('existing database task owners are migrated once without changing descriptions or activity times',async()=>{
+ const before=(await pool.query('SELECT key,data,etag FROM tasks')).rows;
+ // pg-mem does not implement PostgreSQL table locks; production uses the actual lock.
+ const adapter={query:(...args)=>pool.query(...args),connect:async()=>{const c=await pool.connect();return {release:()=>c.release(),query:(sql,args)=>sql.startsWith('LOCK TABLE')?Promise.resolve({rows:[],rowCount:0}):c.query(sql,args)}}};
+ assert.equal(await migrateDefaultOwners(adapter),before.length);
+ const after=(await pool.query('SELECT key,data,etag FROM tasks')).rows;
+ for(const row of after){const old=before.find(t=>t.key===row.key);assert.equal(row.data.followUpOwner,'شراره رضایی');assert.equal(row.data.projectManager,'سپهر کیانی');assert.deepEqual(row.data.descriptions,old.data.descriptions);assert.equal(row.data.updatedAt,old.data.updatedAt);assert.equal(row.data.actionAt,old.data.actionAt);assert.notEqual(row.etag,old.etag)}
+ assert.equal(await migrateDefaultOwners(adapter),0);
 });

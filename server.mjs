@@ -38,6 +38,22 @@ if(path==='/account'&&req.method==='GET')return page('حساب و اعضای ت�
 const headers=new Headers(req.headers);for(const k of [...headers.keys()])if(k.startsWith('oai-'))headers.delete(k);headers.set('oai-authenticated-user-id',user.id);headers.set('oai-authenticated-user-full-name',encodeURIComponent(user.name));headers.set('oai-authenticated-user-full-name-encoding','percent-encoded-utf-8');headers.set('oai-authenticated-user-email',user.username);return worker.fetch(new Request(req,{headers}),{BUCKET});
 }
 export async function init(){await pool.query(`CREATE TABLE IF NOT EXISTS users(id uuid PRIMARY KEY,username text UNIQUE NOT NULL,name text NOT NULL,password_hash text NOT NULL,role text NOT NULL CHECK(role IN ('admin','member')));CREATE TABLE IF NOT EXISTS sessions(token_hash text PRIMARY KEY,user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires_at timestamptz NOT NULL);CREATE TABLE IF NOT EXISTS tasks(key text PRIMARY KEY,data jsonb NOT NULL,etag text NOT NULL);`)}
+// One-time data migration, independent of task activity timestamps and descriptions.
+export async function migrateDefaultOwners(db=pool){
+ await db.query('CREATE TABLE IF NOT EXISTS app_migrations(name text PRIMARY KEY,applied_at timestamptz NOT NULL DEFAULT now())');
+ const c=await db.connect();
+ try{
+  await c.query('BEGIN');
+  await c.query('LOCK TABLE tasks IN SHARE ROW EXCLUSIVE MODE');
+  const applied=await c.query('SELECT name FROM app_migrations WHERE name=$1',['20261114-task-owners']);
+  if(applied.rowCount){await c.query('COMMIT');return 0}
+  const rows=await c.query('SELECT key,data FROM tasks');
+  for(const row of rows.rows){const data={...row.data,followUpOwner:'شراره رضایی',projectManager:'سپهر کیانی'};await c.query('UPDATE tasks SET data=$1,etag=$2 WHERE key=$3',[JSON.stringify(data),randomBytes(16).toString('hex'),row.key])}
+  const verified=await c.query('SELECT data FROM tasks');if(verified.rows.some(row=>row.data.followUpOwner!=='شراره رضایی'||row.data.projectManager!=='سپهر کیانی'))throw Error('Task owner migration verification failed');
+  await c.query('INSERT INTO app_migrations(name) VALUES($1)',['20261114-task-owners']);
+  await c.query('COMMIT');console.log('Task owner migration applied:',rows.rowCount);return rows.rowCount;
+ }catch(e){await c.query('ROLLBACK');throw e}finally{c.release()}
+}
 if(process.env.NODE_ENV!=='test'){
-await init();http.createServer(async(req,res)=>{try{const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>32768){res.writeHead(413);res.end('Request too large');return}chunks.push(chunk)}const origin=process.env.RENDER_EXTERNAL_URL||'http://localhost:'+(process.env.PORT||3000);const request=new Request(new URL(req.url,origin),{method:req.method,headers:req.headers,...(!['GET','HEAD'].includes(req.method)?{body:Buffer.concat(chunks)}:{})});const response=await handle(request,req.headers['x-forwarded-for']?.split(',').at(-1)?.trim()||req.socket.remoteAddress);res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()))}catch(e){console.error('Request failed:',e.code||e.name);res.writeHead(500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:'خطای موقت سرور. دوباره تلاش کنید.'}))}}).listen(process.env.PORT||3000,'0.0.0.0',()=>console.log('Team Pulse ready'));
+await init();await migrateDefaultOwners();http.createServer(async(req,res)=>{try{const chunks=[];let size=0;for await(const chunk of req){size+=chunk.length;if(size>32768){res.writeHead(413);res.end('Request too large');return}chunks.push(chunk)}const origin=process.env.RENDER_EXTERNAL_URL||'http://localhost:'+(process.env.PORT||3000);const request=new Request(new URL(req.url,origin),{method:req.method,headers:req.headers,...(!['GET','HEAD'].includes(req.method)?{body:Buffer.concat(chunks)}:{})});const response=await handle(request,req.headers['x-forwarded-for']?.split(',').at(-1)?.trim()||req.socket.remoteAddress);res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()))}catch(e){console.error('Request failed:',e.code||e.name);res.writeHead(500,{'Content-Type':'application/json'});res.end(JSON.stringify({error:'خطای موقت سرور. دوباره تلاش کنید.'}))}}).listen(process.env.PORT||3000,'0.0.0.0',()=>console.log('Team Pulse ready'));
 }
