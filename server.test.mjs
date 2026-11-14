@@ -38,6 +38,6 @@ assert.equal((await call('/auth/logout','POST',{},cookie)).status,200);
 assert.equal((await call('/api/tasks','GET',null,cookie)).status,401);
 });
 test('PWA manifest, icons and service worker are accessible before sign-in',async()=>{
- const r=await call('/manifest.webmanifest');assert.equal(r.status,200);const manifest=await r.json();assert.equal(manifest.display,'standalone');assert.equal(manifest.start_url,'/');for(const icon of manifest.icons){const image=await call(icon.src);assert.equal(image.status,200);assert.equal(image.headers.get('content-type'),'image/png');assert.ok((await image.arrayBuffer()).byteLength>100)}
+ const r=await call('/manifest.webmanifest');assert.equal(r.status,200);const manifest=await r.json();assert.equal(manifest.display,'standalone');assert.equal(manifest.start_url,'/');for(const icon of manifest.icons){const image=await call(icon.src);assert.equal(image.status,200);assert.equal(image.headers.get('content-type'),icon.type);assert.ok((await image.arrayBuffer()).byteLength>100)}
  const sw=await call('/sw.js');assert.equal(sw.headers.get('cache-control'),'no-cache');const text=await sw.text();new Function(text);assert.ok(!text.includes('cache.put'));assert.equal((await call('/api/tasks')).status,401);
 });
