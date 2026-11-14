@@ -16,8 +16,8 @@ const login=await call('/auth/login','POST',{username:'admin',password:'test-pas
 assert.equal((await call('/api/users','POST',{username:'member',name:'علی',password:'member-password-123'},cookie)).status,201);
 const memberLogin=await call('/auth/login','POST',{username:'member',password:'member-password-123'});const memberCookie=memberLogin.headers.get('set-cookie').split(';')[0];
 assert.equal((await call('/api/users','POST',{username:'other',name:'دیگر',password:'test-password-123'},memberCookie)).status,403);
-const t=await (await call('/api/tasks','POST',{title:'تسک مشترک',assignee:'علی',description:'شرح اولیه'},cookie)).json();assert.ok(t.id);
-const tasks=await (await call('/api/tasks','GET',null,memberCookie)).json();assert.equal(tasks.tasks.length,1);assert.equal(tasks.user.name,'علی');
+const t=await (await call('/api/tasks','POST',{title:'تسک مشترک',assignee:'علی',followUpOwner:'رضا',projectManager:'مریم',description:'شرح اولیه'},cookie)).json();assert.ok(t.id);
+const tasks=await (await call('/api/tasks','GET',null,memberCookie)).json();assert.equal(tasks.tasks.length,1);assert.equal(tasks.tasks[0].followUpOwner,'رضا');assert.equal(tasks.tasks[0].projectManager,'مریم');assert.equal(tasks.user.name,'علی');
 const etag=tasks.tasks[0].etag;
 assert.equal((await call('/api/tasks/'+t.id,'PATCH',{status:'done',note:'انجام شد',etag},memberCookie)).status,200);
 assert.equal((await call('/api/tasks/'+t.id,'PATCH',{status:'blocked',etag},cookie)).status,409);
@@ -28,8 +28,8 @@ assert.equal((await call('/api/tasks/'+t.id,'PATCH',{description:'آخرین ت�
 const listed=await (await call('/api/tasks','GET',null,memberCookie)).json();assert.equal(listed.tasks[0].descriptions.length,3);assert.equal(listed.tasks[0].descriptions[0].text,'آخرین توضیح');assert.equal(listed.tasks[0].note,'انجام شد');
 assert.equal((await call('/api/tasks/'+t.id,'PATCH',{description:'   ',etag:listed.tasks[0].etag},cookie)).status,400);
 const beforeEdit=await (await call('/api/tasks','GET',null,cookie)).json();
-assert.equal((await call('/api/tasks/'+t.id,'PATCH',{title:'تسک ویرایش شده',assignee:'سارا',etag:beforeEdit.tasks[0].etag},memberCookie)).status,200);
-const edited=await (await call('/api/tasks','GET',null,cookie)).json();assert.equal(edited.tasks[0].title,'تسک ویرایش شده');assert.equal(edited.tasks[0].assignee,'سارا');assert.equal(edited.tasks[0].descriptions.length,3);assert.equal(edited.tasks[0].status,'done');assert.equal((await call('/api/tasks/'+t.id,'PATCH',{title:' ',etag:edited.tasks[0].etag},cookie)).status,400);
+assert.equal((await call('/api/tasks/'+t.id,'PATCH',{title:'تسک ویرایش شده',assignee:'سارا',followUpOwner:'کیان',projectManager:'بهار',etag:beforeEdit.tasks[0].etag},memberCookie)).status,200);
+const edited=await (await call('/api/tasks','GET',null,cookie)).json();assert.equal(edited.tasks[0].title,'تسک ویرایش شده');assert.equal(edited.tasks[0].assignee,'سارا');assert.equal(edited.tasks[0].followUpOwner,'کیان');assert.equal(edited.tasks[0].projectManager,'بهار');assert.equal(edited.tasks[0].descriptions.length,3);assert.equal(edited.tasks[0].status,'done');assert.equal((await call('/api/tasks/'+t.id,'PATCH',{title:' ',etag:edited.tasks[0].etag},cookie)).status,400);
 const actionAt='2026-11-14T08:30:00.000Z';assert.equal((await call('/api/tasks/'+t.id,'PATCH',{status:'doing',note:'اقدام جدید',actionAt,etag:edited.tasks[0].etag},memberCookie)).status,200);
 const timed=await (await call('/api/tasks','GET',null,cookie)).json();assert.equal(timed.tasks[0].actionAt,actionAt);assert.equal(timed.tasks[0].history[0].actionAt,actionAt);assert.equal(timed.tasks[0].descriptions.length,3);assert.equal((await call('/api/tasks/'+t.id,'PATCH',{actionAt:'not-a-date',etag:timed.tasks[0].etag},cookie)).status,400);
 assert.equal((await call('/auth/password','POST',{current:'wrong',password:'new-password-123'},memberCookie)).status,403);
