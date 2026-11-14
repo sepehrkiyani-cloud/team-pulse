@@ -23,7 +23,10 @@ assert.equal((await call('/api/tasks/'+t.id,'PATCH',{status:'done',note:'انج�
 assert.equal((await call('/api/tasks/'+t.id,'PATCH',{status:'blocked',etag},cookie)).status,409);
 const updated=await (await call('/api/tasks','GET',null,cookie)).json();assert.equal(updated.tasks[0].status,'done');assert.equal(updated.tasks[0].history[0].by,'علی');assert.equal(updated.tasks[0].description,'شرح اولیه');
 assert.equal((await call('/api/tasks/'+t.id,'PATCH',{description:'توضیحات جداگانه\nجزئیات بیشتر',etag:updated.tasks[0].etag},memberCookie)).status,200);
-const described=await (await call('/api/tasks','GET',null,cookie)).json();assert.equal(described.tasks[0].description,'توضیحات جداگانه\nجزئیات بیشتر');assert.equal(described.tasks[0].note,'انجام شد');assert.equal(described.tasks[0].status,'done');assert.equal(described.tasks[0].history.length,1);
+const described=await (await call('/api/tasks','GET',null,cookie)).json();assert.equal(described.tasks[0].description,'توضیحات جداگانه\nجزئیات بیشتر');assert.equal(described.tasks[0].note,'انجام شد');assert.equal(described.tasks[0].status,'done');assert.equal(described.tasks[0].history.length,1);assert.equal(described.tasks[0].descriptions.length,2);assert.equal(described.tasks[0].descriptions[1].text,'شرح اولیه');assert.equal(described.tasks[0].descriptions[0].by,'علی');
+assert.equal((await call('/api/tasks/'+t.id,'PATCH',{description:'آخرین توضیح',etag:described.tasks[0].etag},cookie)).status,200);
+const listed=await (await call('/api/tasks','GET',null,memberCookie)).json();assert.equal(listed.tasks[0].descriptions.length,3);assert.equal(listed.tasks[0].descriptions[0].text,'آخرین توضیح');assert.equal(listed.tasks[0].note,'انجام شد');
+assert.equal((await call('/api/tasks/'+t.id,'PATCH',{description:'   ',etag:listed.tasks[0].etag},cookie)).status,400);
 assert.equal((await call('/auth/password','POST',{current:'wrong',password:'new-password-123'},memberCookie)).status,403);
 assert.equal((await call('/auth/password','POST',{current:'member-password-123',password:'new-password-123'},memberCookie)).status,200);
 assert.equal((await call('/auth/logout','POST',{},cookie)).status,200);
