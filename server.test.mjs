@@ -1,0 +1,29 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import pg from 'pg';
+import {newDb} from 'pg-mem';
+const db=newDb();pg.Pool=db.adapters.createPg().Pool;process.env.NODE_ENV='test';
+const {handle,init,passwordHash,passwordValid}=await import('./server.mjs');
+const pool=new pg.Pool();await init();
+await pool.query('INSERT INTO users(id,username,name,password_hash,role) VALUES($1,$2,$3,$4,$5)',['11111111-1111-4111-8111-111111111111','admin','مدیر',passwordHash('test-password-123'),'admin']);
+async function call(path,method='GET',body,cookie='',origin='https://team.test'){return handle(new Request('https://team.test'+path,{method,headers:{origin,cookie},...(body?{body:JSON.stringify(body)}:{})}),'local')}
+test('password hash uses independent salt and rejects wrong passwords',()=>{const h=passwordHash('correct-password');assert.ok(passwordValid('correct-password',h));assert.ok(!passwordValid('wrong-password',h));assert.notEqual(h,passwordHash('correct-password'))});
+test('login, member restrictions, shared tasks, conflicts, password change and logout',async()=>{
+assert.equal((await call('/api/tasks')).status,401);
+assert.equal((await call('/auth/login','POST',{username:'admin',password:'wrong'})).status,401);
+assert.equal((await call('/auth/login','POST',{username:'admin',password:'test-password-123'},'','https://evil.test')).status,403);
+const login=await call('/auth/login','POST',{username:'admin',password:'test-password-123'});assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];assert.ok(login.headers.get('set-cookie').includes('HttpOnly; Secure; SameSite=Lax'));
+assert.equal((await call('/api/users','POST',{username:'member',name:'علی',password:'member-password-123'},cookie)).status,201);
+const memberLogin=await call('/auth/login','POST',{username:'member',password:'member-password-123'});const memberCookie=memberLogin.headers.get('set-cookie').split(';')[0];
+assert.equal((await call('/api/users','POST',{username:'other',name:'دیگر',password:'test-password-123'},memberCookie)).status,403);
+const t=await (await call('/api/tasks','POST',{title:'تسک مشترک',assignee:'علی'},cookie)).json();assert.ok(t.id);
+const tasks=await (await call('/api/tasks','GET',null,memberCookie)).json();assert.equal(tasks.tasks.length,1);assert.equal(tasks.user.name,'علی');
+const etag=tasks.tasks[0].etag;
+assert.equal((await call('/api/tasks/'+t.id,'PATCH',{status:'done',note:'انجام شد',etag},memberCookie)).status,200);
+assert.equal((await call('/api/tasks/'+t.id,'PATCH',{status:'blocked',etag},cookie)).status,409);
+const updated=await (await call('/api/tasks','GET',null,cookie)).json();assert.equal(updated.tasks[0].status,'done');assert.equal(updated.tasks[0].history[0].by,'علی');
+assert.equal((await call('/auth/password','POST',{current:'wrong',password:'new-password-123'},memberCookie)).status,403);
+assert.equal((await call('/auth/password','POST',{current:'member-password-123',password:'new-password-123'},memberCookie)).status,200);
+assert.equal((await call('/auth/logout','POST',{},cookie)).status,200);
+assert.equal((await call('/api/tasks','GET',null,cookie)).status,401);
+});
